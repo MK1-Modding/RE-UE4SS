@@ -62,6 +62,7 @@ target(projectName)
     add_includedirs("include", { public = true })
     add_includedirs("generated_include", { public = true })
     add_headerfiles("include/**.hpp")
+	add_headerfiles("include/**.h")
     add_headerfiles("generated_include/*.hpp")
 
     add_files("src/**.cpp")
@@ -72,7 +73,7 @@ target(projectName)
         "IniParser", "JSON", "Input",
         "Constructs", "Helpers", "MProgram",
         "ScopedTimer", "Profiler", "patternsleuth_bind",
-        "glad", { public = true }
+        "glad", "MK1HOOKSDK", { public = true }
     )
 
     add_packages("fmt", { public = true })

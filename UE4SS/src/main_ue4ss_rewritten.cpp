@@ -7,10 +7,13 @@
 #include <tlhelp32.h>
 
 #include "UE4SSProgram.hpp"
+#include <MK1HOOKSDK.h>
 #include <DynamicOutput/DynamicOutput.hpp>
 #include <Helpers/String.hpp>
 
 #define WIN_API_FUNCTION_NAME DllMain
+
+static HMODULE selfhModule = nullptr;
 
 using namespace RC;
 
@@ -115,19 +118,60 @@ auto dll_process_attached(HMODULE moduleHandle) -> void
     }
 }
 
+//MK1Hook plugin integration
+// Plugin name to use when loading and printing errors to log
+extern "C" PLUGIN_API const char* GetPluginName()
+{
+    return "UE4SS";
+}
+
+// Hook project name that this plugin is compatible with
+extern "C" PLUGIN_API const char* GetPluginProject()
+{
+    return "MK12HOOK";
+}
+
+// GUI tab name that will be used in the Plugins section
+extern "C" PLUGIN_API const char* GetPluginTabName()
+{
+    return "UE4SS";
+}
+
+// Initialization
+extern "C" PLUGIN_API void OnInitialize()
+{
+    if (!MK12HOOKSDK::IsOK())
+    {
+        MK12HOOKSDK::Initialize();
+    }
+
+    if (MK12HOOKSDK::IsOK())
+    {
+        process_initialized(selfhModule);
+    }
+}
+
+// Shutdown
+extern "C" PLUGIN_API void OnShutdown()
+{
+    UE4SSProgram::static_cleanup();
+}
+
+// Called every game tick
+extern "C" PLUGIN_API void OnFrameTick()
+{
+}
+
 auto WIN_API_FUNCTION_NAME(HMODULE hModule, DWORD ul_reason_for_call, [[maybe_unused]] LPVOID lpReserved) -> BOOL
 {
     switch (ul_reason_for_call)
     {
     case DLL_PROCESS_ATTACH:
-        dll_process_attached(hModule);
+        selfhModule = hModule;
         break;
     case DLL_THREAD_ATTACH:
-        break;
     case DLL_THREAD_DETACH:
-        break;
     case DLL_PROCESS_DETACH:
-        UE4SSProgram::static_cleanup();
         break;
     }
     return TRUE;

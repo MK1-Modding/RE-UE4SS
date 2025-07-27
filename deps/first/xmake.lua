@@ -10,6 +10,7 @@ includes("Input")
 includes("JSON")
 includes("LuaMadeSimple")
 includes("LuaRaw")
+includes("MK1HOOKSDK")
 includes("MProgram")
 includes("ParserBase")
 if get_config("ue4ssCross") ~= "msvc-wine" then
