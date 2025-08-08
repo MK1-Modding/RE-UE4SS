@@ -140,14 +140,23 @@ extern "C" PLUGIN_API const char* GetPluginTabName()
 // Initialization
 extern "C" PLUGIN_API void OnInitialize()
 {
-    if (!MK12HOOKSDK::IsOK())
-    {
-        MK12HOOKSDK::Initialize();
-    }
+    MK12HOOKSDK::Initialize();
 
     if (MK12HOOKSDK::IsOK())
     {
         process_initialized(selfhModule);
+    }
+    else
+    {
+        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+
+        CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
+        GetConsoleScreenBufferInfo(hConsole, &consoleInfo);
+        WORD ogColour = consoleInfo.wAttributes;
+
+        SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_INTENSITY);
+        printf("Error: Could not initialize UE4SS as an MK1Hook plugin!\n");
+        SetConsoleTextAttribute(hConsole, ogColour);
     }
 }
 
@@ -155,11 +164,6 @@ extern "C" PLUGIN_API void OnInitialize()
 extern "C" PLUGIN_API void OnShutdown()
 {
     UE4SSProgram::static_cleanup();
-}
-
-// Called every game tick
-extern "C" PLUGIN_API void OnFrameTick()
-{
 }
 
 auto WIN_API_FUNCTION_NAME(HMODULE hModule, DWORD ul_reason_for_call, [[maybe_unused]] LPVOID lpReserved) -> BOOL

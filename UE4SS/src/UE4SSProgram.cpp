@@ -209,7 +209,6 @@ namespace RC
                         m_render_thread = std::jthread{&GUI::gui_thread, &m_debugging_gui};
                         break;
                     case GUI::RenderMode::EngineTick:
-                    case GUI::RenderMode::GameViewportClientTick:
                         // The hooked game function will pick up on the window being "open", and start rendering.
                         get_debugging_ui().set_open(true);
                         break;
@@ -779,8 +778,6 @@ namespace RC
         config.bHookEndPlay = settings_manager.Hooks.HookEndPlay;
         config.bHookLocalPlayerExec = settings_manager.Hooks.HookLocalPlayerExec;
         config.bHookAActorTick = settings_manager.Hooks.HookAActorTick;
-        config.bHookEngineTick = settings_manager.Hooks.HookEngineTick;
-        config.bHookGameViewportClientTick = settings_manager.Hooks.HookGameViewportClientTick;
         config.FExecVTableOffsetInLocalPlayer = settings_manager.Hooks.FExecVTableOffsetInLocalPlayer;
         // Apply Debug Build setting from settings file only for now.
         Unreal::Version::DebugBuild = settings_manager.EngineVersionOverride.DebugBuild;
@@ -819,7 +816,7 @@ namespace RC
 
     static bool s_gui_initialized_for_game_thread{};
     static bool s_gui_initializing_for_game_thread{};
-    auto gui_render_thread_tick(Unreal::UObject*, float) -> void
+    auto gui_render_thread_tick() -> void
     {
         if (UE4SSProgram::settings_manager.Debug.RenderMode == GUI::RenderMode::ExternalThread)
         {
@@ -860,11 +857,7 @@ namespace RC
 
         if (settings_manager.Debug.RenderMode == GUI::RenderMode::EngineTick)
         {
-            Hook::RegisterEngineTickPostCallback(gui_render_thread_tick);
-        }
-        else if (settings_manager.Debug.RenderMode == GUI::RenderMode::GameViewportClientTick)
-        {
-            Hook::RegisterGameViewportClientTickPostCallback(gui_render_thread_tick);
+            Hook::RegisterEngineTickCallback(gui_render_thread_tick);
         }
 
         if (settings_manager.Debug.DebugConsoleEnabled)
@@ -895,7 +888,6 @@ namespace RC
                             m_render_thread = std::jthread{&GUI::gui_thread, &m_debugging_gui};
                             break;
                         case GUI::RenderMode::EngineTick:
-                        case GUI::RenderMode::GameViewportClientTick:
                             // The hooked game function will pick up on the window being "open", and start rendering.
                             s_gui_initialized_for_game_thread = false;
                             s_gui_initializing_for_game_thread = true;

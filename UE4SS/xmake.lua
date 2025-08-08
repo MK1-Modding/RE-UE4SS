@@ -62,7 +62,6 @@ target(projectName)
     add_includedirs("include", { public = true })
     add_includedirs("generated_include", { public = true })
     add_headerfiles("include/**.hpp")
-	add_headerfiles("include/**.h")
     add_headerfiles("generated_include/*.hpp")
 
     add_files("src/**.cpp")

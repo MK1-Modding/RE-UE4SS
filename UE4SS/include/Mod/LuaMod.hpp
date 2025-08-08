@@ -122,6 +122,7 @@ namespace RC
         static inline std::vector<LuaCallbackData> m_end_play_pre_callbacks{};
         static inline std::vector<LuaCallbackData> m_end_play_post_callbacks{};
         static inline std::vector<LuaCallbackData> m_fight_startup_callbacks{};
+        static inline std::vector<LuaCallbackData> m_engine_tick_callbacks{};
         static inline std::vector<FunctionHookData> m_script_hook_callbacks{};
         static inline std::unordered_map<int32_t, int32_t> m_generic_hook_id_to_native_hook_id{};
         // Generic hook ids are generated incrementally so the first one is 0 and the next one is always +1 from the last id.

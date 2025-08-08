@@ -2540,6 +2540,34 @@ Overloads:
             return 0;
         });
 
+        lua.register_function("RegisterEngineTickHook", [](const LuaMadeSimple::Lua& lua) -> int {
+            std::string error_overload_not_found{R"(
+No overload found for function 'RegisterEngineTickHook'.
+Overloads:
+#1: RegisterEngineTickHook(LuaFunction Callback))"};
+
+            if (!lua.is_function())
+            {
+                lua.throw_error(error_overload_not_found);
+            }
+
+            auto mod = get_mod_ref(lua);
+            auto hook_lua = make_hook_state(mod);
+
+            lua_xmove(lua.get_lua_state(), hook_lua->get_lua_state(), 1);
+
+            // Take a reference to the Lua function (it also pops it of the stack)
+            const int32_t lua_callback_registry_index = hook_lua->registry().make_ref();
+
+            LuaMod::m_engine_tick_callbacks.emplace_back(LuaMod::LuaCallbackData{
+                    .lua = &lua,
+                    .instance_of_class = nullptr,
+                    .registry_indexes = {std::pair<const LuaMadeSimple::Lua*, LuaMod::LuaCallbackData::RegistryIndex>{&lua, lua_callback_registry_index}},
+            });
+
+            return 0;
+        });
+
         lua.register_function("IterateGameDirectories", [](const LuaMadeSimple::Lua& lua) -> int {
             std::string error_overload_not_found{R"(
 No overload found for function 'IterateGameDirectories'.
@@ -4142,6 +4170,7 @@ Overloads:
         erase_from_container(this, m_end_play_pre_callbacks);
         erase_from_container(this, m_end_play_post_callbacks);
         erase_from_container(this, m_fight_startup_callbacks);
+        erase_from_container(this, m_engine_tick_callbacks);
         erase_from_container(this, m_call_function_by_name_with_arguments_pre_callbacks);
         erase_from_container(this, m_call_function_by_name_with_arguments_post_callbacks);
         erase_from_container(this, m_local_player_exec_pre_callbacks);
@@ -4381,83 +4410,88 @@ Overloads:
         Unreal::Hook::RegisterLoadMapPreCallback(
                 [](Unreal::UEngine* Engine, Unreal::FWorldContext& WorldContext, Unreal::FURL URL, Unreal::UPendingNetGame* PendingGame, Unreal::FString& Error)
                         -> std::pair<bool, bool> {
-                    for (const auto& callback_data : m_load_map_pre_callbacks)
-                    {
-                        std::pair<bool, bool> return_value{};
-
-                        for (const auto& [lua_ptr, registry_index] : callback_data.registry_indexes)
+                    return TRY([&] {
+                        for (const auto& callback_data : m_load_map_pre_callbacks)
                         {
-                            const auto& lua = *lua_ptr;
+                            std::pair<bool, bool> return_value{};
 
-                            lua.registry().get_function_ref(registry_index.lua_index);
-                            static auto s_object_property_name = Unreal::FName(STR("ObjectProperty"));
-                            LuaType::RemoteUnrealParam::construct(lua, &Engine, s_object_property_name);
-                            LuaType::RemoteUnrealParam::construct(lua, &WorldContext.GetThisCurrentWorld(), s_object_property_name);
-                            LuaType::FURL::construct(lua, URL);
-                            LuaType::RemoteUnrealParam::construct(lua, &PendingGame, s_object_property_name);
-                            callback_data.lua->set_string(to_string(Error.GetCharArray()));
-                            lua.call_function(5, 1);
+                            for (const auto& [lua_ptr, registry_index] : callback_data.registry_indexes)
+                            {
+                                const auto& lua = *lua_ptr;
 
-                            if (callback_data.lua->is_nil())
-                            {
-                                return_value.first = false;
-                                callback_data.lua->discard_value();
+                                lua.registry().get_function_ref(registry_index.lua_index);
+                                static auto s_object_property_name = Unreal::FName(STR("ObjectProperty"));
+                                LuaType::RemoteUnrealParam::construct(lua, &Engine, s_object_property_name);
+                                LuaType::RemoteUnrealParam::construct(lua, &WorldContext.GetThisCurrentWorld(), s_object_property_name);
+                                LuaType::FURL::construct(lua, URL);
+                                LuaType::RemoteUnrealParam::construct(lua, &PendingGame, s_object_property_name);
+                                callback_data.lua->set_string(to_string(Error.GetCharArray()));
+                                lua.call_function(5, 1);
+
+                                if (callback_data.lua->is_nil())
+                                {
+                                    return_value.first = false;
+                                    callback_data.lua->discard_value();
+                                }
+                                else if (!callback_data.lua->is_bool())
+                                {
+                                    throw std::runtime_error{"A callback for 'LoadMap' must return bool or nil"};
+                                }
+                                else
+                                {
+                                    return_value.first = true;
+                                    return_value.second = callback_data.lua->get_bool();
+                                }
                             }
-                            else if (!callback_data.lua->is_bool())
-                            {
-                                throw std::runtime_error{"A callback for 'LoadMap' must return bool or nil"};
-                            }
-                            else
-                            {
-                                return_value.first = true;
-                                return_value.second = callback_data.lua->get_bool();
-                            }
+
+                            return return_value;
                         }
-
-                        return return_value;
-                    }
-                    return std::pair<bool, bool>{false, false};
+                        return std::pair<bool, bool>{false, false};
+                    });
                 });
 
         Unreal::Hook::RegisterLoadMapPostCallback(
                 [](Unreal::UEngine* Engine, Unreal::FWorldContext& WorldContext, Unreal::FURL URL, Unreal::UPendingNetGame* PendingGame, Unreal::FString& Error)
+
                         -> std::pair<bool, bool> {
-                    for (const auto& callback_data : m_load_map_post_callbacks)
-                    {
-                        std::pair<bool, bool> return_value{};
-
-                        for (const auto& [lua_ptr, registry_index] : callback_data.registry_indexes)
+                    return TRY([&] {
+                        for (const auto& callback_data : m_load_map_post_callbacks)
                         {
-                            const auto& lua = *lua_ptr;
+                            std::pair<bool, bool> return_value{};
 
-                            lua.registry().get_function_ref(registry_index.lua_index);
-                            static auto s_object_property_name = Unreal::FName(STR("ObjectProperty"));
-                            LuaType::RemoteUnrealParam::construct(lua, &Engine, s_object_property_name);
-                            LuaType::RemoteUnrealParam::construct(lua, &WorldContext.GetThisCurrentWorld(), s_object_property_name);
-                            LuaType::FURL::construct(lua, URL);
-                            LuaType::RemoteUnrealParam::construct(lua, &PendingGame, s_object_property_name);
-                            callback_data.lua->set_string(to_string(Error.GetCharArray()));
-                            lua.call_function(5, 1);
+                            for (const auto& [lua_ptr, registry_index] : callback_data.registry_indexes)
+                            {
+                                const auto& lua = *lua_ptr;
 
-                            if (callback_data.lua->is_nil())
-                            {
-                                return_value.first = false;
-                                callback_data.lua->discard_value();
+                                lua.registry().get_function_ref(registry_index.lua_index);
+                                static auto s_object_property_name = Unreal::FName(STR("ObjectProperty"));
+                                LuaType::RemoteUnrealParam::construct(lua, &Engine, s_object_property_name);
+                                LuaType::RemoteUnrealParam::construct(lua, &WorldContext.GetThisCurrentWorld(), s_object_property_name);
+                                LuaType::FURL::construct(lua, URL);
+                                LuaType::RemoteUnrealParam::construct(lua, &PendingGame, s_object_property_name);
+                                callback_data.lua->set_string(to_string(Error.GetCharArray()));
+                                lua.call_function(5, 1);
+
+                                if (callback_data.lua->is_nil())
+                                {
+                                    return_value.first = false;
+                                    callback_data.lua->discard_value();
+                                }
+                                else if (!callback_data.lua->is_bool())
+                                {
+                                    throw std::runtime_error{"A callback for 'LoadMap' must return bool or nil"};
+                                }
+                                else
+                                {
+                                    return_value.first = true;
+                                    return_value.second = callback_data.lua->get_bool();
+                                }
                             }
-                            else if (!callback_data.lua->is_bool())
-                            {
-                                throw std::runtime_error{"A callback for 'LoadMap' must return bool or nil"};
-                            }
-                            else
-                            {
-                                return_value.first = true;
-                                return_value.second = callback_data.lua->get_bool();
-                            }
+
+                            return return_value;
                         }
-
-                        return return_value;
-                    }
-                    return std::pair<bool, bool>{false, false};
+                        return std::pair<bool, bool>{false, false};
+                    });
                 });
 
         Unreal::Hook::RegisterInitGameStatePreCallback([]([[maybe_unused]] Unreal::AGameModeBase* Context) {
@@ -4611,41 +4645,57 @@ Overloads:
             });
         });
 
-        Unreal::Hook::RegisterStaticConstructObjectPostCallback([](const Unreal::FStaticConstructObjectParameters&, Unreal::UObject* constructed_object) {
-            Unreal::UStruct* object_class = constructed_object->GetClassPrivate();
-            while (object_class)
-            {
-                std::erase_if(m_static_construct_object_lua_callbacks, [&](auto& callback_data) -> bool {
-                    bool cancel = false;
-                    if (callback_data.instance_of_class == object_class)
+        Unreal::Hook::RegisterEngineTickCallback([]() {
+            TRY([&] {
+                for (const auto& callback_data : m_engine_tick_callbacks)
+                {
+                    // set_is_in_game_thread(lua, true);
+
+                    for (const auto& [lua_ptr, registry_index] : callback_data.registry_indexes)
                     {
-                        try
+                        const auto& lua = *lua_ptr;
+
+                        lua.registry().get_function_ref(registry_index.lua_index);
+                        // static auto s_object_property_name = Unreal::FName(STR("ObjectProperty"));
+                        // LuaType::RemoteUnrealParam::construct(lua, &Context, s_object_property_name);
+                        lua.call_function(0, 0);
+                    }
+
+                    // set_is_in_game_thread(lua, false);
+                }
+            });
+        });
+
+        Unreal::Hook::RegisterStaticConstructObjectPostCallback([](const Unreal::FStaticConstructObjectParameters&, Unreal::UObject* constructed_object) {
+            return TRY([&] {
+                Unreal::UStruct* object_class = constructed_object->GetClassPrivate();
+                while (object_class)
+                {
+                    std::erase_if(m_static_construct_object_lua_callbacks, [&](auto& callback_data) -> bool {
+                        bool cancel = false;
+                        if (callback_data.instance_of_class == object_class)
                         {
                             callback_data.lua->registry().get_function_ref(callback_data.lua_callback_function_ref);
                             LuaType::auto_construct_object(*callback_data.lua, constructed_object);
                             callback_data.lua->call_function(1, 1);
 
                             cancel = callback_data.lua->is_bool(-1) && callback_data.lua->get_bool(-1);
+
+                            if (cancel)
+                            {
+                                // Release the thread_ref to GC.
+                                luaL_unref(callback_data.lua->get_lua_state(), LUA_REGISTRYINDEX, callback_data.lua_callback_thread_ref);
+                            }
                         }
-                        catch (std::runtime_error& e)
-                        {
-                            Output::send(STR("{}\n"), ensure_str(e.what()));
-                        }
 
-                        if (cancel)
-                        {
-                            // Release the thread_ref to GC.
-                            luaL_unref(callback_data.lua->get_lua_state(), LUA_REGISTRYINDEX, callback_data.lua_callback_thread_ref);
-                        }
-                    }
+                        return cancel;
+                    });
 
-                    return cancel;
-                });
+                    object_class = object_class->GetSuperStruct();
+                }
 
-                object_class = object_class->GetSuperStruct();
-            }
-
-            return constructed_object;
+                return constructed_object;
+            });
         });
 
         Unreal::Hook::RegisterULocalPlayerExecPreCallback([](Unreal::ULocalPlayer* context, Unreal::UWorld* in_world, const TCHAR* cmd, Unreal::FOutputDevice& ar)
